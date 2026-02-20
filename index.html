@@ -23,6 +23,20 @@
         <p class="text-sm text-gray-500">ถอดเสียง/แปลภาษา พร้อมสร้างซับไตเติ้ลแบบ Uncensored</p>
     </div>
 
+    <!-- API Key Settings Panel (NEW - SECURE) -->
+    <div class="glass-panel p-5 mb-6 border-l-4 border-yellow-400">
+        <label class="block text-sm font-semibold mb-2 text-yellow-700">
+            <i class="fas fa-key mr-1"></i> Gemini API Key (บันทึกไว้ในเครื่องคุณเท่านั้น)
+        </label>
+        <div class="flex gap-2">
+            <input type="password" id="apiKeyInput" placeholder="วาง Gemini API Key ของคุณที่นี่..." class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-400 outline-none text-sm font-mono">
+            <button onclick="saveApiKey()" class="bg-yellow-500 hover:bg-yellow-600 text-white px-4 rounded-lg text-sm font-bold transition whitespace-nowrap">
+                บันทึก
+            </button>
+        </div>
+        <p class="text-xs text-gray-500 mt-2">โค้ดปลอดภัย สามารถโฮสต์บน GitHub ได้ รหัสจะไม่ถูกบันทึกลงเซิร์ฟเวอร์</p>
+    </div>
+
     <!-- Main Control Panel -->
     <div class="glass-panel p-5 mb-6">
         
@@ -99,11 +113,33 @@
 </div>
 
 <script>
-    // --- Configuration & Constants ---
-    const apiKey = "AIzaSyCEP1kP02nHZZZBxRSOMxP8SYoMCoBH_1I"; // Will be injected by execution environment
+    // --- Configuration & Initialization ---
     const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
     let abortController = new AbortController();
     let isProcessing = false;
+
+    // Load API Key from LocalStorage on Startup
+    document.addEventListener('DOMContentLoaded', () => {
+        const savedKey = localStorage.getItem('gemini_api_key');
+        if (savedKey) {
+            document.getElementById('apiKeyInput').value = savedKey;
+        }
+    });
+
+    function saveApiKey() {
+        const key = document.getElementById('apiKeyInput').value.trim();
+        if (key) {
+            localStorage.setItem('gemini_api_key', key);
+            alert('บันทึก API Key ลงในเครื่องเรียบร้อยแล้ว');
+        } else {
+            localStorage.removeItem('gemini_api_key');
+            alert('ล้างค่า API Key แล้ว');
+        }
+    }
+
+    function getApiKey() {
+        return document.getElementById('apiKeyInput').value.trim();
+    }
 
     // Explicit Keywords mapping
     const keywordsData = {
@@ -127,19 +163,14 @@
         }
     });
 
-    function showMessage(msg) {
-        alert(msg); // Custom alert can be implemented, using standard alert for simplicity per constraints
-    }
-
     async function copyResult() {
         const text = document.getElementById('resultText').value;
         if(!text) return;
         try {
-            document.execCommand('copy'); // Fallback for mobile iframe limitations
+            document.execCommand('copy');
             await navigator.clipboard.writeText(text);
         } catch (err) {}
         
-        // Show temp visual feedback
         const btn = document.querySelector('button[onclick="copyResult()"]');
         const oldHtml = btn.innerHTML;
         btn.innerHTML = '<i class="fas fa-check mr-1"></i>คัดลอกแล้ว';
@@ -168,6 +199,14 @@
     // --- Core Processing Logic ---
     async function startProcessing() {
         if (isProcessing) return;
+        
+        const currentApiKey = getApiKey();
+        if (!currentApiKey) {
+            alert('กรุณาใส่ Gemini API Key ก่อนเริ่มทำงานครับ');
+            document.getElementById('apiKeyInput').focus();
+            return;
+        }
+
         const fileInput = document.getElementById('mediaFile');
         if (!fileInput.files.length) {
             alert('กรุณาเลือกไฟล์ก่อนครับ');
@@ -189,7 +228,6 @@
         try {
             updateStatus('กำลังโหลดและถอดรหัสไฟล์เสียง... (อาจใช้เวลาสักครู่หากไฟล์ใหญ่)', 5);
             
-            // 1. Decode Audio using Web Audio API (Best way to accurately chunk client-side)
             const audioContext = new (window.AudioContext || window.webkitAudioContext)();
             const arrayBuffer = await file.arrayBuffer();
             const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
@@ -200,7 +238,6 @@
 
             updateStatus(`เตรียมไฟล์สำเร็จ ความยาว ${formatTimeCode(totalDuration)}. แบ่งเป็น ${totalChunks} ส่วน`, 10);
 
-            // 2. Process chunks sequentially
             for (let i = 0; i < totalChunks; i++) {
                 const startTime = i * chunkDurationSec;
                 let endTime = startTime + chunkDurationSec;
@@ -208,21 +245,16 @@
 
                 updateStatus(`กำลังประมวลผลส่วนที่ ${i + 1}/${totalChunks} (${formatTimeCode(startTime)} - ${formatTimeCode(endTime)})...`, 10 + ((i/totalChunks)*80));
 
-                // Extract audio segment
                 const chunkAudioBuffer = extractAudioSlice(audioBuffer, audioContext, startTime, endTime);
-                
-                // Convert to WAV (Mono, 16kHz for faster API upload and processing)
                 const wavBlob = audioBufferToWav(chunkAudioBuffer, 16000);
                 const base64Audio = await blobToBase64(wavBlob);
 
-                // Call AI API
-                const chunkResultText = await callGeminiAPI(base64Audio, startTime, format, lang);
+                const chunkResultText = await callGeminiAPI(base64Audio, startTime, format, lang, currentApiKey);
                 
-                // Append result
                 if (chunkResultText) {
                     const resultBox = document.getElementById('resultText');
                     resultBox.value += chunkResultText.trim() + "\n\n";
-                    resultBox.scrollTop = resultBox.scrollHeight; // Auto scroll down
+                    resultBox.scrollTop = resultBox.scrollHeight;
                 }
             }
 
@@ -232,7 +264,7 @@
         } catch (error) {
             console.error(error);
             updateStatus(`เกิดข้อผิดพลาด: ${error.message}`, 0);
-            alert(`Error: ${error.message}`);
+            alert(`Error: ${error.message}\n\nคำแนะนำ: โปรดตรวจสอบว่า API Key ของคุณถูกต้องและยังมีโควต้าเหลืออยู่หรือไม่`);
         } finally {
             isProcessing = false;
             document.getElementById('startBtn').disabled = false;
@@ -254,9 +286,7 @@
         const endOffset = Math.floor(endTime * sampleRate);
         const frameCount = endOffset - startOffset;
         
-        // Force output to 1 channel (Mono) to save memory and network bandwidth
         const newBuffer = context.createBuffer(1, frameCount, sampleRate);
-        // Mix down channels to mono if stereo
         const channelData = new Float32Array(frameCount);
         for (let channel = 0; channel < originalBuffer.numberOfChannels; channel++) {
             const originalData = originalBuffer.getChannelData(channel);
@@ -268,13 +298,9 @@
         return newBuffer;
     }
 
-    // Downsample and encode to WAV (16-bit PCM)
     function audioBufferToWav(buffer, targetSampleRate = 16000) {
-        // Downsample logic
         const originalSampleRate = buffer.sampleRate;
         const data = buffer.getChannelData(0);
-        
-        // Simple linear resampling
         const ratio = originalSampleRate / targetSampleRate;
         const newLength = Math.round(data.length / ratio);
         const result = new Float32Array(newLength);
@@ -286,27 +312,24 @@
             offsetData += ratio;
         }
 
-        // Encode to WAV
-        const bufferLength = result.length * 2; // 16-bit = 2 bytes per sample
+        const bufferLength = result.length * 2;
         const arrayBuffer = new ArrayBuffer(44 + bufferLength);
         const view = new DataView(arrayBuffer);
 
-        // WAV Header
         writeString(view, 0, 'RIFF');
         view.setUint32(4, 36 + bufferLength, true);
         writeString(view, 8, 'WAVE');
         writeString(view, 12, 'fmt ');
         view.setUint32(16, 16, true);
-        view.setUint16(20, 1, true); // PCM
-        view.setUint16(22, 1, true); // 1 channel
+        view.setUint16(20, 1, true);
+        view.setUint16(22, 1, true);
         view.setUint32(24, targetSampleRate, true);
-        view.setUint32(28, targetSampleRate * 2, true); // byte rate
-        view.setUint16(32, 2, true); // block align
-        view.setUint16(34, 16, true); // bits per sample
+        view.setUint32(28, targetSampleRate * 2, true);
+        view.setUint16(32, 2, true);
+        view.setUint16(34, 16, true);
         writeString(view, 36, 'data');
         view.setUint32(40, bufferLength, true);
 
-        // PCM Data
         let offset = 44;
         for (let i = 0; i < result.length; i++, offset += 2) {
             let s = Math.max(-1, Math.min(1, result[i]));
@@ -325,11 +348,7 @@
     function blobToBase64(blob) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
-            reader.onloadend = () => {
-                // Remove data:audio/wav;base64, prefix
-                const base64data = reader.result.split(',')[1];
-                resolve(base64data);
-            };
+            reader.onloadend = () => resolve(reader.result.split(',')[1]);
             reader.onerror = reject;
             reader.readAsDataURL(blob);
         });
@@ -344,8 +363,7 @@
     }
 
     // --- AI API Call ---
-    async function callGeminiAPI(base64Audio, timeOffsetSeconds, formatStr, targetLang) {
-        // Construct Keywords string
+    async function callGeminiAPI(base64Audio, timeOffsetSeconds, formatStr, targetLang, activeApiKey) {
         let keywordContext = "Keywords to Emphasize:\n";
         if(targetLang === 'auto') {
             keywordContext += `Thai: ${keywordsData.th}\nJapanese: ${keywordsData.ja}\nEnglish: ${keywordsData.en}\nChinese: ${keywordsData.zh}`;
@@ -389,9 +407,8 @@ Output strictly the subtitle lines for this chunk. No intro, no outro text.`;
             }
         };
 
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${activeApiKey}`;
 
-        // Exponential backoff retry logic
         const maxRetries = 5;
         let delay = 1000;
         
@@ -404,16 +421,15 @@ Output strictly the subtitle lines for this chunk. No intro, no outro text.`;
                 });
 
                 if (!response.ok) {
-                    throw new Error(`API Error: ${response.status} ${response.statusText}`);
+                    const errData = await response.json();
+                    throw new Error(`API Error ${response.status}: ${errData.error?.message || response.statusText}`);
                 }
 
                 const data = await response.json();
                 let text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
                 
-                // Cleanup markdown blocks if AI accidentally adds them
                 text = text.replace(/```(vtt|srt|text)?\n?/gi, '').replace(/```/g, '').trim();
                 
-                // If VTT, remove the "WEBVTT" header from chunk returns if it's not chunk 0
                 if (formatStr === 'vtt' && timeOffsetSeconds > 0) {
                     text = text.replace(/WEBVTT\n*/g, '');
                 }
@@ -421,6 +437,9 @@ Output strictly the subtitle lines for this chunk. No intro, no outro text.`;
                 return text;
                 
             } catch (err) {
+                if (err.message.includes('API Error 400') || err.message.includes('API Error 403')) {
+                    throw err; // อย่า retry ถ้าเป็น error เรื่อง API Key ผิด
+                }
                 if (i === maxRetries - 1) throw err;
                 await new Promise(resolve => setTimeout(resolve, delay));
                 delay *= 2;
@@ -430,4 +449,5 @@ Output strictly the subtitle lines for this chunk. No intro, no outro text.`;
 </script>
 </body>
 </html>
+
 
