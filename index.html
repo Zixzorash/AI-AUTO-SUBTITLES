@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Subtitle Generator (Uncensored)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f3f4f6; }
+        .glass-panel { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border-radius: 1rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }
+        .loader { border: 3px solid #f3f3f3; border-top: 3px solid #ef4444; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; display: inline-block; vertical-align: middle; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        textarea { resize: vertical; }
+    </style>
+</head>
+<body class="p-4 md:p-8 text-gray-800 min-h-screen">
+
+<div class="max-w-3xl mx-auto">
+    <!-- Header -->
+    <div class="text-center mb-6">
+        <h1 class="text-3xl font-bold text-red-600 mb-2"><i class="fas fa-closed-captioning mr-2"></i>AI Auto Subtitle</h1>
+        <p class="text-sm text-gray-500">ถอดเสียง/แปลภาษา พร้อมสร้างซับไตเติ้ลแบบ Uncensored</p>
+    </div>
+
+    <!-- Main Control Panel -->
+    <div class="glass-panel p-5 mb-6">
+        
+        <!-- File Input -->
+        <div class="mb-4">
+            <label class="block text-sm font-semibold mb-2">1. เลือกไฟล์วิดีโอ/เสียง (Max 500MB)</label>
+            <input type="file" id="mediaFile" accept="video/mp4,audio/mp3,audio/m4a,audio/*" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-red-50 file:text-red-700 hover:file:bg-red-100 transition">
+            <p id="fileInfo" class="text-xs text-gray-500 mt-1 hidden"></p>
+        </div>
+
+        <!-- Settings Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <!-- Language -->
+            <div>
+                <label class="block text-sm font-semibold mb-2">2. ภาษาของเสียง/การแปล</label>
+                <select id="language" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-400 outline-none">
+                    <option value="auto">ตรวจจับภาษาอัตโนมัติ (Auto Detect)</option>
+                    <option value="th">ภาษาไทย (Thai)</option>
+                    <option value="ja" selected>ภาษาญี่ปุ่น (Japanese) - Default</option>
+                    <option value="en">ภาษาอังกฤษ (English)</option>
+                    <option value="zh">ภาษาจีน (Chinese)</option>
+                </select>
+            </div>
+
+            <!-- Output Format -->
+            <div>
+                <label class="block text-sm font-semibold mb-2">3. รูปแบบซับไตเติ้ล</label>
+                <select id="outputFormat" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-400 outline-none">
+                    <option value="vtt">VTT (แนะนำสำหรับเว็บ)</option>
+                    <option value="srt">SRT (มาตรฐานทั่วไป)</option>
+                </select>
+            </div>
+
+            <!-- Chunk Size -->
+            <div>
+                <label class="block text-sm font-semibold mb-2">4. แบ่งไฟล์ประมวลผล (นาที)</label>
+                <input type="number" id="chunkSize" value="3" min="1" max="10" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-400 outline-none">
+                <p class="text-xs text-gray-500 mt-1">แบ่งไฟล์ทุกๆกี่นาทีเพื่อป้องกันระบบค้าง</p>
+            </div>
+        </div>
+
+        <!-- Action Button -->
+        <button id="startBtn" onclick="startProcessing()" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-lg transition shadow-md flex justify-center items-center gap-2">
+            <i class="fas fa-play"></i> เริ่มกระบวนการถอดเสียง
+        </button>
+    </div>
+
+    <!-- Progress & Status -->
+    <div id="statusPanel" class="glass-panel p-5 mb-6 hidden">
+        <div class="flex justify-between items-center mb-2">
+            <span id="statusText" class="font-semibold text-sm text-blue-600"><span class="loader mr-2"></span>กำลังเตรียมไฟล์...</span>
+            <span id="progressText" class="text-sm font-bold">0%</span>
+        </div>
+        <div class="w-full bg-gray-200 rounded-full h-2.5">
+            <div id="progressBar" class="bg-blue-600 h-2.5 rounded-full transition-all duration-300" style="width: 0%"></div>
+        </div>
+    </div>
+
+    <!-- Output Result -->
+    <div class="glass-panel p-0 overflow-hidden flex flex-col h-[400px]">
+        <div class="bg-gray-800 text-white p-3 flex justify-between items-center">
+            <h3 class="font-semibold text-sm"><i class="fas fa-align-left mr-2"></i>ผลลัพธ์ (Real-time)</h3>
+            <div class="flex gap-2">
+                <button onclick="copyResult()" class="bg-gray-700 hover:bg-gray-600 text-white text-xs py-1 px-3 rounded border border-gray-600 transition">
+                    <i class="fas fa-copy mr-1"></i>คัดลอก
+                </button>
+                <button onclick="downloadResult()" class="bg-green-600 hover:bg-green-700 text-white text-xs py-1 px-3 rounded transition">
+                    <i class="fas fa-download mr-1"></i>ดาวน์โหลดไฟล์
+                </button>
+            </div>
+        </div>
+        <textarea id="resultText" class="w-full h-full p-4 bg-gray-50 text-gray-800 border-none outline-none text-sm font-mono" readonly placeholder="คำบรรยายจะปรากฏที่นี่..."></textarea>
+    </div>
+</div>
+
+<script>
+    // --- Configuration & Constants ---
+    const apiKey = ""; // Will be injected by execution environment
+    const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
+    let abortController = new AbortController();
+    let isProcessing = false;
+
+    // Explicit Keywords mapping
+    const keywordsData = {
+        th: "หี, ควย, เงี่ยน, น้ำเงี่ยน, เสียวหี, เสียว, น้ำแตก, โม๊ก, โม๊กควย, เลียหี, เย็ด, เม็ดแตด, แตด, ตูด, ควยแข็ง, เย็ดหี, น้ำหีแตก, น้ำควยเยิ้ม, ควยยัดหี, น้ำหีเยิ้ม, หีกระแทกควย, แยงหี, นิ้วแยงหี, ชักควย, อมควย, ดูดแตด, น้ำเงี่ยนไหล, เสียวสุดๆ, ฉันเสียวมากๆ, ฉันรู้สึกเสียว, หีตอด, หีบีบ, ควยยาว, ควยใหญ่, หีฟิต, แทงหี, บี้แตด, แหกหี, ถอกควย, ยัดควย, หีแฉะ, ควยโด่, ชักว่าว, ดูดหี, เลียตูด, เขี่ยแตด, หัวนม, หัวควย, ควยยาว, ควยใหญ่, ดูดควย, เลียหัวนม, ดูดหัวนม, น้ำหีจะแตก, น้ำควยจะพุ่ง, แตกใส่ปาก, แตกใส่หี, แตกในหี, น้ำแตกในหี, น้ำอสุจิแตกในหี, น้ำอสุจิแตกใส่ปาก, ขึ้นขย่มควย, ควยแทงหี, หีค่อมควย, ควยยัดหี, ควยยัดปาก, หียัดปาก, หีสั่น, แตดสั่น, เย็ดเร็วๆ, เย็ดแรง, เย็ดอีก, หีขย่มควย, ขย่มควย, ควยถูหี, หีถูควย, นิ้วถูหี, มีอจับควย, จับหี, จูบ, ดูดปาก, แลกลิ้น, เลียควย, ควยยัดปาก, หีคับ, หีแน่น, ดูดหี, เจ็บหี, เสียวหี, เสียวควย, หีอุ่น, ควยอุ่น, แตกนอก, เย็ดตูด, ไซ้คอ, บีบควย, เย็ดสด, กินน้ำเงี่ยน",
+        en: "Pussy, cock, horny, pussy juice, pussy pleasure, pleasure, squirting, suck, suck cock, lick pussy, fuck, clitoris, clit, ass, hard cock, fuck pussy, pussy juice burst, oozing cock juice, cock stuffing pussy, oozing pussy juice, pussy slamming cock, pussy poking, finger pussy poking, jerk off cock, Sucking cock, sucking clitoris, cum flowing, extremely thrilling, I'm so thrilled, I feel thrilled, pussy squeeze, pussy squeeze, long cock, big cock, tight pussy, pussy thrusting, clit squeeze, pussy spread, cock pulling, cock stuffing, wet pussy, hard cock, jerking off, pussy sucking, ass licking, clit rubbing, Nipples, cock head, long cock, big cock, suck cock, lick nipples, suck nipples, pussy juice will squirt, cum in mouth, cum in pussy, cum in pussy, cum in pussy, cum in mouth, ride cock, cock thrusts into pussy, pussy sucks cock, Dick stuffed in pussy, dick stuffed in mouth, pussy stuffed in mouth, pussy trembles, clitoris trembles, fuck fast, fuck hard, fuck again, pussy humping dick, humping dick, pussy rubbing dick, pussy rubbing dick, fingers rubbing pussy, grabbing dick, grabbing pussy",
+        ja: "マンコ, チンポ, 興奮, マン汁, マンコの快感, 快楽, 潮吹き, フェラチオ, フェラチオ, マンコを舐める, ファック, クリトリス, クリトリス, お尻, 硬いチンポ, マンコをファックする, マン汁が噴き出す, ジューシーなチンポ, チンポをマンコに詰める, ジューシーなマン汁, マンコをチンポで叩く, マンコを突く, 指でマンコを突く, チンポをシークする, チンポを吸う, クリトリスを吸う, マン汁が流れる, 非常にスリリング, とてもスリリング, スリリングな気分, マンコを圧迫する, マンコを圧迫する, 長いチンポ, 大きなチンポ, きついマンコ, マンコを突く, クリトリスを圧迫する, マンコを広げる, チンポを引っ張る, チンポを詰める, 濡れたマンコ, 勃起したチンポ, シークする, マンコを吸う, お尻を舐める, クリトリスをいじめる, 乳首, チンポの頭, 長いチンポ, 大きなチンポ, チンポを吸う, 乳首を舐める, 乳首を吸う, マン汁が噴き出す, 精液が噴き出す, 突入する口, マンコに突っ込む, マンコに突っ込む, マンコに射精, 口内射精, チンポに乗る, マンコにチンポを突っ込む, マンコがチンポを吸う, マンコにチンポを詰め込む, 口にチンポを詰め込む, 口にマンコを詰め込む, マンコが震える, クリトリスが震える, 早くファックする, 激しくファックする, もう一度ファックする, マンコがチンポに乗る, チンポを振る, チンポがマンコをこする, マンコがチンポをこする, 指でマンコをこする, チンポを掴む, マンコを掴む, キス, 唇を吸う, 舌を交換する, チンポを舐める, 口にチンポを詰め込む, きついマンコ, きついマンコ, マンコを吸う, 痛むマンコ, マンコのスリル, チンポのスリル, 温かいマンコ, 温かいチンポ, 外で射精, 尻ファック, 首をこする, チンポを握る, 生セックス, 精液を飲み込む",
+        zh: "阴道, 阴茎, 性欲旺盛, 阴道分泌物, 阴道快感, 快感, 喷水, 吮吸, 吮吸阴茎, 舔阴道, 性交, 阴蒂, 阴蒂, 屁股, 硬阴茎, 操阴道, 阴道分泌物喷涌, 阴茎分泌物渗出, 阴茎插入阴道, 阴道分泌物渗出, 阴茎猛烈撞击阴道, 戳阴道, 手指戳阴道, 自慰阴茎, 吮吸阴茎, 吮吸阴蒂, 精液流出, 极其刺激, 我太兴奋了, 我感到兴奋, 挤压阴道, 挤压阴道, 长阴茎, 大阴茎, 紧阴道, 阴道抽插, 挤压阴蒂, 阴道张开, 拉动阴茎, 阴茎插入, 湿润的阴道, 硬阴茎, 自慰, 吮吸阴道, 舔屁股, 摩擦阴蒂, 乳头, 阴茎头 长鸡巴, 大鸡巴, 吸鸡巴, 舔乳头, 吸乳头, 阴道喷水, 射在嘴里, 射在阴道里, 射在阴道里, 射在阴道里, 射在嘴里, 骑鸡巴, 鸡巴插入阴道, 阴道吸鸡巴, 鸡巴塞进阴道, 鸡巴塞进嘴里, 阴道塞进嘴里, 阴道颤抖, 阴蒂颤抖, 快速性交, 用力性交, 再来一次, 阴道摩擦鸡巴, 摩擦鸡巴, 阴道摩擦鸡巴, 阴道摩擦鸡巴, 手指摩擦阴道, 抓鸡巴, 抓阴道"
+    };
+
+    // --- UI Interaction ---
+    document.getElementById('mediaFile').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        const infoP = document.getElementById('fileInfo');
+        if (file) {
+            const sizeMB = (file.size / (1024*1024)).toFixed(2);
+            infoP.textContent = `ไฟล์ที่เลือก: ${file.name} (${sizeMB} MB)`;
+            infoP.classList.remove('hidden');
+            if(file.size > MAX_FILE_SIZE) {
+                infoP.innerHTML += `<br><span class="text-red-500 font-bold">ขนาดไฟล์เกิน 500MB อาจทำให้เบราว์เซอร์บนมือถือค้างได้</span>`;
+            }
+        }
+    });
+
+    function showMessage(msg) {
+        alert(msg); // Custom alert can be implemented, using standard alert for simplicity per constraints
+    }
+
+    async function copyResult() {
+        const text = document.getElementById('resultText').value;
+        if(!text) return;
+        try {
+            document.execCommand('copy'); // Fallback for mobile iframe limitations
+            await navigator.clipboard.writeText(text);
+        } catch (err) {}
+        
+        // Show temp visual feedback
+        const btn = document.querySelector('button[onclick="copyResult()"]');
+        const oldHtml = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-check mr-1"></i>คัดลอกแล้ว';
+        btn.classList.add('bg-green-600');
+        setTimeout(() => {
+            btn.innerHTML = oldHtml;
+            btn.classList.remove('bg-green-600');
+        }, 2000);
+    }
+
+    function downloadResult() {
+        const text = document.getElementById('resultText').value;
+        if(!text) return;
+        const format = document.getElementById('outputFormat').value;
+        const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `subtitle_generated.${format}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    // --- Core Processing Logic ---
+    async function startProcessing() {
+        if (isProcessing) return;
+        const fileInput = document.getElementById('mediaFile');
+        if (!fileInput.files.length) {
+            alert('กรุณาเลือกไฟล์ก่อนครับ');
+            return;
+        }
+
+        const file = fileInput.files[0];
+        const lang = document.getElementById('language').value;
+        const format = document.getElementById('outputFormat').value;
+        let chunkSizeMins = parseFloat(document.getElementById('chunkSize').value);
+        if (isNaN(chunkSizeMins) || chunkSizeMins < 1) chunkSizeMins = 3;
+
+        isProcessing = true;
+        document.getElementById('startBtn').disabled = true;
+        document.getElementById('startBtn').innerHTML = '<i class="fas fa-spinner fa-spin"></i> กำลังประมวลผล...';
+        document.getElementById('statusPanel').classList.remove('hidden');
+        document.getElementById('resultText').value = format === 'vtt' ? 'WEBVTT\n\n' : '';
+        
+        try {
+            updateStatus('กำลังโหลดและถอดรหัสไฟล์เสียง... (อาจใช้เวลาสักครู่หากไฟล์ใหญ่)', 5);
+            
+            // 1. Decode Audio using Web Audio API (Best way to accurately chunk client-side)
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const arrayBuffer = await file.arrayBuffer();
+            const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+            
+            const totalDuration = audioBuffer.duration;
+            const chunkDurationSec = chunkSizeMins * 60;
+            const totalChunks = Math.ceil(totalDuration / chunkDurationSec);
+
+            updateStatus(`เตรียมไฟล์สำเร็จ ความยาว ${formatTimeCode(totalDuration)}. แบ่งเป็น ${totalChunks} ส่วน`, 10);
+
+            // 2. Process chunks sequentially
+            for (let i = 0; i < totalChunks; i++) {
+                const startTime = i * chunkDurationSec;
+                let endTime = startTime + chunkDurationSec;
+                if (endTime > totalDuration) endTime = totalDuration;
+
+                updateStatus(`กำลังประมวลผลส่วนที่ ${i + 1}/${totalChunks} (${formatTimeCode(startTime)} - ${formatTimeCode(endTime)})...`, 10 + ((i/totalChunks)*80));
+
+                // Extract audio segment
+                const chunkAudioBuffer = extractAudioSlice(audioBuffer, audioContext, startTime, endTime);
+                
+                // Convert to WAV (Mono, 16kHz for faster API upload and processing)
+                const wavBlob = audioBufferToWav(chunkAudioBuffer, 16000);
+                const base64Audio = await blobToBase64(wavBlob);
+
+                // Call AI API
+                const chunkResultText = await callGeminiAPI(base64Audio, startTime, format, lang);
+                
+                // Append result
+                if (chunkResultText) {
+                    const resultBox = document.getElementById('resultText');
+                    resultBox.value += chunkResultText.trim() + "\n\n";
+                    resultBox.scrollTop = resultBox.scrollHeight; // Auto scroll down
+                }
+            }
+
+            updateStatus('เสร็จสิ้นกระบวนการถอดเสียงทั้งหมด!', 100);
+            document.getElementById('statusText').innerHTML = '<i class="fas fa-check-circle mr-2 text-green-500"></i>เสร็จสมบูรณ์';
+
+        } catch (error) {
+            console.error(error);
+            updateStatus(`เกิดข้อผิดพลาด: ${error.message}`, 0);
+            alert(`Error: ${error.message}`);
+        } finally {
+            isProcessing = false;
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('startBtn').innerHTML = '<i class="fas fa-play"></i> เริ่มกระบวนการถอดเสียง';
+        }
+    }
+
+    function updateStatus(text, percent) {
+        const loaderHtml = percent < 100 ? '<span class="loader mr-2"></span>' : '';
+        document.getElementById('statusText').innerHTML = loaderHtml + text;
+        document.getElementById('progressBar').style.width = `${percent}%`;
+        document.getElementById('progressText').innerText = `${Math.round(percent)}%`;
+    }
+
+    // --- Audio Processing Utils ---
+    function extractAudioSlice(originalBuffer, context, startTime, endTime) {
+        const sampleRate = originalBuffer.sampleRate;
+        const startOffset = Math.floor(startTime * sampleRate);
+        const endOffset = Math.floor(endTime * sampleRate);
+        const frameCount = endOffset - startOffset;
+        
+        // Force output to 1 channel (Mono) to save memory and network bandwidth
+        const newBuffer = context.createBuffer(1, frameCount, sampleRate);
+        // Mix down channels to mono if stereo
+        const channelData = new Float32Array(frameCount);
+        for (let channel = 0; channel < originalBuffer.numberOfChannels; channel++) {
+            const originalData = originalBuffer.getChannelData(channel);
+            for (let i = 0; i < frameCount; i++) {
+                channelData[i] += originalData[startOffset + i] / originalBuffer.numberOfChannels;
+            }
+        }
+        newBuffer.copyToChannel(channelData, 0);
+        return newBuffer;
+    }
+
+    // Downsample and encode to WAV (16-bit PCM)
+    function audioBufferToWav(buffer, targetSampleRate = 16000) {
+        // Downsample logic
+        const originalSampleRate = buffer.sampleRate;
+        const data = buffer.getChannelData(0);
+        
+        // Simple linear resampling
+        const ratio = originalSampleRate / targetSampleRate;
+        const newLength = Math.round(data.length / ratio);
+        const result = new Float32Array(newLength);
+        let offsetResult = 0;
+        let offsetData = 0;
+        while (offsetResult < result.length) {
+            result[offsetResult] = data[Math.round(offsetData)];
+            offsetResult++;
+            offsetData += ratio;
+        }
+
+        // Encode to WAV
+        const bufferLength = result.length * 2; // 16-bit = 2 bytes per sample
+        const arrayBuffer = new ArrayBuffer(44 + bufferLength);
+        const view = new DataView(arrayBuffer);
+
+        // WAV Header
+        writeString(view, 0, 'RIFF');
+        view.setUint32(4, 36 + bufferLength, true);
+        writeString(view, 8, 'WAVE');
+        writeString(view, 12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true); // PCM
+        view.setUint16(22, 1, true); // 1 channel
+        view.setUint32(24, targetSampleRate, true);
+        view.setUint32(28, targetSampleRate * 2, true); // byte rate
+        view.setUint16(32, 2, true); // block align
+        view.setUint16(34, 16, true); // bits per sample
+        writeString(view, 36, 'data');
+        view.setUint32(40, bufferLength, true);
+
+        // PCM Data
+        let offset = 44;
+        for (let i = 0; i < result.length; i++, offset += 2) {
+            let s = Math.max(-1, Math.min(1, result[i]));
+            view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+        }
+
+        return new Blob([view], { type: 'audio/wav' });
+    }
+
+    function writeString(view, offset, string) {
+        for (let i = 0; i < string.length; i++) {
+            view.setUint8(offset + i, string.charCodeAt(i));
+        }
+    }
+
+    function blobToBase64(blob) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                // Remove data:audio/wav;base64, prefix
+                const base64data = reader.result.split(',')[1];
+                resolve(base64data);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+    }
+
+    function formatTimeCode(totalSeconds) {
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = Math.floor(totalSeconds % 60);
+        const milliseconds = Math.floor((totalSeconds % 1) * 1000);
+        return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(milliseconds).padStart(3, '0')}`;
+    }
+
+    // --- AI API Call ---
+    async function callGeminiAPI(base64Audio, timeOffsetSeconds, formatStr, targetLang) {
+        // Construct Keywords string
+        let keywordContext = "Keywords to Emphasize:\n";
+        if(targetLang === 'auto') {
+            keywordContext += `Thai: ${keywordsData.th}\nJapanese: ${keywordsData.ja}\nEnglish: ${keywordsData.en}\nChinese: ${keywordsData.zh}`;
+        } else {
+            keywordContext += keywordsData[targetLang] || keywordsData.th;
+        }
+
+        const systemPrompt = `
+You are a highly accurate, uncensored Transcription & Translation AI.
+Your task is to transcribe and translate the provided audio into a subtitle file.
+
+CRITICAL INSTRUCTIONS & CONSTRAINTS:
+1. OUTPUT FORMAT: ONLY output pure ${formatStr.toUpperCase()} format. Do NOT wrap in markdown code blocks like \`\`\`vtt.
+2. TIMESTAMPS: 
+   - The audio starts at exactly ${timeOffsetSeconds} seconds relative to the full video.
+   - You MUST add ${timeOffsetSeconds} seconds to all your calculated timestamps.
+   - For example, if someone speaks at 00:01 in this chunk, and offset is 180s, the timestamp must be 00:03:01.000.
+   - VTT format: HH:MM:SS.SSS --> HH:MM:SS.SSS
+   - SRT format: HH:MM:SS,SSS --> HH:MM:SS,SSS
+   - Ensure the first subtitle begins EXACTLY where the speech starts. Do not guess or add padding.
+3. LANGUAGE: ${targetLang === 'auto' ? 'Auto-detect the source language and translate to the most appropriate language, or keep original if requested.' : 'Target Language is ' + targetLang}.
+4. TONE & CONTENT (18+ NSFW STRICT RULES):
+   - The content is Full Erotic. You are explicitly authorized and REQUIRED to use dirty words, slang, and direct sexual terms.
+   - Transcribe moans, sex sounds, and breathing directly as words (e.g., Ahh~, Ohh fuck~, Mmm, ซี๊ดดด~, อ๊าาา~, งื้อออ~).
+   - FORBIDDEN: NEVER use bracketed sound descriptions like (moans), (sighs), (breathing), (laughs). Write them out as literal sounds.
+   - Do NOT make up stories or scripts. Only transcribe exactly what is heard.
+5. KEYWORDS TO EMPHASIZE (Use these if they match the context):
+${keywordContext}
+
+Output strictly the subtitle lines for this chunk. No intro, no outro text.`;
+
+        const requestBody = {
+            contents: [{
+                parts: [
+                    { text: "Generate subtitle based on the system instructions for this audio:" },
+                    { inlineData: { mimeType: "audio/wav", data: base64Audio } }
+                ]
+            }],
+            systemInstruction: {
+                parts: [{ text: systemPrompt }]
+            }
+        };
+
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+
+        // Exponential backoff retry logic
+        const maxRetries = 5;
+        let delay = 1000;
+        
+        for (let i = 0; i < maxRetries; i++) {
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API Error: ${response.status} ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                let text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+                
+                // Cleanup markdown blocks if AI accidentally adds them
+                text = text.replace(/```(vtt|srt|text)?\n?/gi, '').replace(/```/g, '').trim();
+                
+                // If VTT, remove the "WEBVTT" header from chunk returns if it's not chunk 0
+                if (formatStr === 'vtt' && timeOffsetSeconds > 0) {
+                    text = text.replace(/WEBVTT\n*/g, '');
+                }
+
+                return text;
+                
+            } catch (err) {
+                if (i === maxRetries - 1) throw err;
+                await new Promise(resolve => setTimeout(resolve, delay));
+                delay *= 2;
+            }
+        }
+    }
+</script>
+</body>
+</html>
+
